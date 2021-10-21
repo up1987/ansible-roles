@@ -1,0 +1,165 @@
+---
+
+- name: gather os specific variables
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_facts.distribution }}-{{ ansible_facts.distribution_major_version }}.yml"
+    - "{{ ansible_facts.distribution }}.yml"
+    - "{{ ansible_facts.os_family }}.yml"
+
+- name: Install libvirt client
+  include_tasks: install-client.yml
+
+- name: Get all defined VM list
+  command: "virsh list --all --name"
+  register: all_defined_vm
+  changed_when: false
+
+- name: Get all stopped VM list
+  command: "virsh list --state-shutoff --name"
+  register: all_stopped_vm
+  changed_when: false
+
+- name: Get all running VM list
+  command: "virsh list --state-running --name"
+  register: all_running_vm
+  changed_when: false
+
+- name: Create VM volumes
+  include_tasks: create-volumes.yml
+  vars:
+    volumes: "{{ vm.volumes | default([], true) }}"
+  with_items: "{{ libvirt_vms }}"
+  loop_control:
+    loop_var: vm
+    label: "{{ vm.name }}"
+  when:
+    - (vm.state | default('present', true)) == 'present'
+    - "vm.name not in all_defined_vm.stdout_lines"
+
+- name: Create cloudinit ISO
+  include_tasks: cloudinit.yml
+  with_items: "{{ libvirt_vms }}"
+  loop_control:
+    loop_var: vm
+    label: "{{ vm.name }}"
+  when:
+    - vm.cloud_init is defined
+    - (vm.state | default('present', true)) == 'present'
+    - "vm.name not in all_defined_vm.stdout_lines"
+
+- name: Create VM
+  command: >
+    virt-install
+    --connect {{ libvirt_host_uri }}
+    --virt-type {{ vm.virt_type | default(libvirt_default_virt_type) }}
+    --import
+    --name {{ vm.name }}
+    --memory {{ vm.memory_mb }}
+    --vcpus {{ vm.vcpus }},cpuset=auto
+    --cpu {{ vm.cpu_mode | default(libvirt_default_cpu_mode)}}
+    --clock offset={{ vm.clock_offset | default(libvirt_default_clock_offset) }}
+    {% if vm.boot is defined %}--boot {{ vm.boot }}{% endif %}
+    {% if vm.features is defined %}--features {{ vm.features|join(',') }}{% endif %}
+    {% for volume in vm.volumes %}
+    {% if volume.type | default(libvirt_volume_default_type) == 'file' %}
+    --disk path={{ volume.file_path }}/{{ volume.name }},format={% if volume.backing_image is defined %}qcow2{% else %}{{ volume.format | default(libvirt_volume_default_format) }}{% endif %},bus={{ libvirt_volume_default_bus }}
+    {% endif %}
+    {% endfor %}
+    {% if vm.cloud_init is defined %}--disk path={{ libvirt_cloudinit_iso_default_dir }}/cloudinit_{{ vm.name }}.iso,device=cdrom{% endif %}
+    {% for interface in vm.interfaces %}
+    {% if interface.type == 'bridge' %}
+    --network bridge={{ interface.source.dev }},model=virtio
+    {% elif interface.type == 'direct' %}
+    --network type=direct,source={{ interface.source.dev }},model=virtio
+    {% elif interface.type == 'network' %}
+    --network network={{ interface.source.dev }},model=virtio
+    {% endif %}
+    {% endfor %}
+    --graphics vnc
+    --noautoconsole
+    --os-type=generic
+    --channel unix,target_type=virtio,name=org.qemu.guest_agent.0
+    {% if vm.os_variant is defined %}--os-variant={{ vm.os_variant }}{% endif %}
+    {% if vm.autostart | default(libvirt_vm_autostart) %}--autostart{% endif %}
+  with_items: "{{ libvirt_vms }}"
+  loop_control:
+    loop_var: vm
+    label: "{{ vm.name }}"
+  when:
+    - (vm.state | default('present', true)) == 'present'
+    - "vm.name not in all_defined_vm.stdout_lines"
+
+- name: Start VM
+  command: "virsh start {{ vm.name }}"
+  with_items: "{{ libvirt_vms }}"
+  loop_control:
+    loop_var: vm
+    label: "{{ vm.name }}"
+  when:
+    - (vm.state | default('present', true)) == 'present'
+    - "vm.name in all_stopped_vm.stdout_lines"
+
+- name: Stop VM
+  command: "virsh destroy {{ vm.name }}"
+  with_items: "{{ libvirt_vms }}"
+  loop_control:
+    loop_var: vm
+    label: "{{ vm.name }}"
+  when:
+    - (vm.state | default('present', true)) is regex('stop|absent')
+    - "vm.name in all_running_vm.stdout_lines"
+
+- name: Reboot VM
+  command: "virsh reboot {{ vm.name }}"
+  with_items: "{{ libvirt_vms }}"
+  loop_control:
+    loop_var: vm
+    label: "{{ vm.name }}"
+  when:
+    - (vm.state | default('present', true)) == 'reboot'
+    - "vm.name in all_running_vm.stdout_lines"
+
+- name: Reset VM
+  command: "virsh reset {{ vm.name }}"
+  with_items: "{{ libvirt_vms }}"
+  loop_control:
+    loop_var: vm
+    label: "{{ vm.name }}"
+  when:
+    - (vm.state | default('present', true)) == 'reset'
+    - "vm.name in all_running_vm.stdout_lines"
+
+- name: Shutdown VM
+  command: "virsh shutdown {{ vm.name }}"
+  with_items: "{{ libvirt_vms }}"
+  loop_control:
+    loop_var: vm
+    label: "{{ vm.name }}"
+  when:
+    - (vm.state | default('present', true)) == 'shutdown'
+    - "vm.name in all_running_vm.stdout_lines"
+
+- name: Delete VM volumes
+  file:
+    path: "{{ item.1.file_path }}/{{ item.1.name }}"
+    state: absent
+  with_subelements:
+    - "{{ libvirt_vms }}"
+    - volumes
+  loop_control:
+    label: "{{ item.1.file_path }}/{{ item.1.name }}"
+  when:
+    - ( item.0.state | default('present', true) ) == 'absent'
+    - item.1.type | default(libvirt_volume_default_type) == 'file'
+    - libvirt_volume_force_remove
+
+- name: Delete VM
+  command: "virsh undefine {{ vm.name }}"
+  with_items: "{{ libvirt_vms }}"
+  loop_control:
+    loop_var: vm
+    label: "{{ vm.name }}"
+  when:
+    - (vm.state | default('present', true)) == 'absent'
+    - "vm.name in all_defined_vm.stdout_lines"

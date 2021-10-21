@@ -1,0 +1,52 @@
+---
+
+# K3S
+k3s_version: v1.22.2+k3s2
+k3s_reset: false
+k3s_cluster_cidr: 10.233.64.0/18
+k3s_service_cidr: 10.233.0.0/18
+k3s_cluster_dns: 10.233.0.3
+k3s_extra_configs: >-
+k3s_download_airgap_images: false
+k3s_local_storage_enabled: false
+k3s_metrics_server_enabled: false
+k3s_servicelb_enabled: false
+k3s_traefik_enabled: false
+k3s_flannel_enabled: false
+k3s_cni: calico
+k3s_ingress: traefik-ingress
+k3s_registries: {}
+is_k3s_master: "{{ inventory_hostname in groups['k3s_master'] }}"
+first_k3s_master_ip: "{{ hostvars[groups['k3s_master'][0]].ansible_default_ipv4.address | default('127.0.0.1') }}"
+
+# Repo
+docker_image_repo: docker.io
+gcr_image_repo: k8s.gcr.io
+
+# Calico
+calico_version: v3.18.1
+calico_node_image_repo: "{{ docker_image_repo }}/calico/node"
+calico_node_image_tag: "{{ calico_version }}"
+calico_cni_image_repo: "{{ docker_image_repo }}/calico/cni"
+calico_cni_image_tag: "{{ calico_version }}"
+calico_controllers_image_repo: "{{ docker_image_repo }}/calico/kube-controllers"
+calico_controllers_image_tag: "{{ calico_version }}"
+calico_typha_image_repo: "{{ docker_image_repo }}/calico/typha"
+calico_typha_image_tag: "{{ calico_version }}"
+calico_pod2daemon_image_repo: "{{ docker_image_repo }}/calico/pod2daemon-flexvol"
+calico_pod2daemon_image_tag: "{{ calico_version }}"
+
+# Ingress
+ingress_nginx_controller_image_repo: "{{ gcr_image_repo }}/ingress-nginx/controller"
+ingress_nginx_controller_image_tag: "v0.44.0"
+traefik_image_repo: "{{ docker_image_repo }}/traefik"
+traefik_image_tag: "2.4.8"
+
+# Downloads
+k3s_resource_prefix: https://github.com/k3s-io/k3s/releases/download
+k3s_bin: "{{ k3s_resource_prefix }}/{{ k3s_version }}/k3s"
+k3s_bin_checksum: "{{ k3s_resource_prefix }}/{{ k3s_version }}/sha256sum-amd64.txt"
+k3s_airgap_images: "{{ k3s_resource_prefix }}/{{ k3s_version }}/k3s-airgap-images-amd64.tar"
+k3s_airgap_images_checksum: "{{ k3s_resource_prefix }}/{{ k3s_version }}/sha256sum-amd64.txt"
+k3s_install_sh: "https://get.k3s.io"
+k3s_offline_images: []

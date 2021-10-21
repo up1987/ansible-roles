@@ -1,0 +1,7 @@
+---
+
+- include_tasks: volumes/files.yml
+  with_items: "{{ volumes }}"
+  when:
+    - item.type | default(libvirt_volume_default_type) == 'file'
+    - item.file_path is defined

@@ -1,0 +1,44 @@
+---
+
+- name: Create the temporary folder
+  tempfile:
+    state: directory
+    prefix: cloudinit.
+  register: cloudinit_dir
+
+- name: Create network_config
+  copy:
+    dest: "{{ cloudinit_dir.path }}/network_config"
+    content: |
+      ---
+      {{ vm.cloud_init.network_config | to_nice_yaml }}
+  when: vm.cloud_init.network_config is defined
+
+- name: Create user_data
+  copy:
+    dest: "{{ cloudinit_dir.path }}/user_data"
+    content: |
+      #cloud-config
+      {% if vm.cloud_init.user_data is defined %}{{ vm.cloud_init.user_data | to_nice_yaml }}{% endif %}
+
+- name: Always remove cloudinit ISO file
+  file:
+    path: "{{ libvirt_cloudinit_iso_default_dir }}/cloudinit_{{ vm.name }}.iso"
+    state: absent
+  when: libvirt_cloudinit_always_remove_iso
+
+- name: Generate cloud-init ISO
+  command: >
+    cloud-localds
+    --dsmode local
+    --hostname {{ vm.cloud_init.hostname }}
+    {% if vm.cloud_init.network_config is defined %}--network-config {{ cloudinit_dir.path }}/network_config{% endif %}
+    {{ libvirt_cloudinit_iso_default_dir }}/cloudinit_{{ vm.name }}.iso
+    {{ cloudinit_dir.path }}/user_data
+  args:
+    creates: "{{ libvirt_cloudinit_iso_default_dir }}/cloudinit_{{ vm.name }}.iso"
+
+- name: Clean the temporary folder
+  file:
+    path: "{{ cloudinit_dir.path }}"
+    state: absent

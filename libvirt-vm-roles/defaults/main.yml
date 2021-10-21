@@ -1,0 +1,116 @@
+---
+
+# Default libvirt connection is always localhost
+libvirt_host_uri: "qemu:///system"
+
+# Default hypervisor is KVM
+libvirt_default_virt_type: kvm
+
+# Configure the CPU model and CPU features exposed to the guest.
+libvirt_default_cpu_mode: host-passthrough
+
+# The guest Always synchronize to UTC when booted
+libvirt_default_clock_offset: utc
+
+# Set the autostart flag by default. This causes the VM to be started on host boot up
+libvirt_vm_autostart: true
+
+# Disk image format. For file volumes this can be 'raw', 'qcow2', 'vmdk', etc.
+libvirt_volume_default_format: qcow2
+
+# Currently only support 'file' as VM image
+libvirt_volume_default_type: file
+
+# Disk bus type. Value can be 'ide', 'sata', 'scsi', 'usb' or 'virtio'.
+libvirt_volume_default_bus: virtio
+
+# Path to store cloudinit ISO
+libvirt_cloudinit_iso_default_dir: /var/lib/libvirt/images
+
+# Always clean old ISO file
+libvirt_cloudinit_always_remove_iso: true
+
+# Force remove volume files when VM status is absent
+libvirt_volume_force_remove: false
+
+# Definition of VMs
+libvirt_vms:
+    # State of the VM. The value can be:
+    #   present - Ensure VM is created and running
+    #   stop - Force stop VM
+    #   reboot - Graceful reboot VM
+    #   reset - Force reset VM
+    #   shutdown - Graceful shutdown VM
+    #   absent - Force remove VM but keep disk data.
+  - state: present
+
+    # Name of the VM.
+    name: test
+
+    # Memory in MB.
+    memory_mb: 1024
+
+    # Number of vCPUs.
+    vcpus: 1
+
+    # Virtual machine type. Defauls to 'kvm'.
+    virt_type: kvm
+
+    # Virtual machine CPU mode. Defaults to 'host-passthrough'
+    cpu_mode: "host-passthrough"
+
+    # Optionally specify the post-install VM boot configuration
+    # Some examples:
+    # Set the boot device priority as first cdrom, first floppy, first harddisk, network PXE boot. Additionally enable BIOS boot menu prompt.
+    #boot: cdrom,fd,hd,network,menu=on
+
+    # List of volumes. For example:
+    # Download remote image as /data/user_vm/test/os.qcow2 and expand it to 50G.
+    #  - name: 'os.qcow2'
+    #    file_path: '/data/user_vm/test'
+    #    image: 'https://cloud-images.ubuntu.com/releases/bionic/release/ubuntu-18.04-server-cloudimg-amd64.img'
+    #    capacity: '50G'
+    # Save remote image as backing_image, and create image file from backing_image.
+    # Useful for creating VMs multiple times.
+    #  - name: 'os.qcow2'
+    #    file_path: '/data/user_vm/test2'
+    #    image: 'https://cloud-images.ubuntu.com/releases/bionic/release/ubuntu-18.04-server-cloudimg-amd64.img'
+    #    backing_image: /var/lib/libvirt/images/ubuntu-18.04-server-cloudimg-amd64.qcow2
+    #    capacity: '50G'
+    # Create an 100G empty disk as /data/user_vm/test/data.qcow2
+    #  - name: 'data.qcow2'
+    #    file_path: '/data/user_vm/test'
+    #    capacity: '100G'
+    volumes: []
+
+    # What time should the clock be synced to on boot (utc/localtime/timezone/variable)
+    clock_offset: "utc"
+
+    # List of network interfaces. For example:
+    # Connect to a virtual network in the host called "default". The "default" network is always created by libvirt for the first time.
+    #  - type: 'network'
+    #    source:
+    #      dev: 'default'
+    # Connect to a bridge device in the host called 'br-ext'.
+    #  - type: 'bridge'
+    #    source:
+    #      dev: 'br-ext'
+    # Direct connect to host interface 'eth0' using macvtap
+    #  - type: 'direct'
+    #    source:
+    #      dev: 'eth0'
+    interfaces: []
+
+    # Set the autostart flag. This causes the VM to be started on host boot up
+    autostart: true
+
+    # Further optimize the guest configuration for a specific operating system variant (ex. 'fedora8', 'winxp').
+    # This parameter is optional.
+    # Use the command "osinfo-query os" to get the list of the accepted OS variants.
+    #os_variant:
+
+    # Define cloudinit data and create the ISO
+    #cloud_init:
+    #  network_config:  # See https://cloudinit.readthedocs.io/en/latest/topics/network-config-format-v2.html
+    #  user_data:  # See https://cloudinit.readthedocs.io/en/latest/topics/examples.html
+    #  hostname: localhost  # Set hostname of VM

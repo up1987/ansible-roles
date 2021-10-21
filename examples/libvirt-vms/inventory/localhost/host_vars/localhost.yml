@@ -1,0 +1,40 @@
+---
+
+libvirt_vms:
+  - state: present
+    name: 'vm-test-1'
+    memory_mb: 4096
+    vcpus: 4
+    volumes:
+      - name: 'os.qcow2'
+        file_path: '/data/user_vm/vm-test-1'
+        image: 'https://cloud-images.ubuntu.com/releases/focal/release/ubuntu-20.04-server-cloudimg-amd64.img'
+        backing_image: /var/lib/libvirt/images/ubuntu-20.04-server.qcow2
+        capacity: '100G'
+    interfaces:
+      - type: 'network'
+        source:
+          dev: 'default'
+    cloud_init:
+      hostname: vm-test-1
+      user_data:
+        timezone: Asia/Shanghai
+        ssh_pwauth: yes
+        apt_mirror: https://mirrors.tuna.tsinghua.edu.cn/ubuntu
+        packages:
+          - python-is-python3
+          - qemu-guest-agent
+        power_state:
+          mode: reboot
+        users:
+          - name: user
+            gecos: user
+            primary_group: user
+            groups: adm
+            shell: /bin/bash
+            sudo: ALL=(ALL) NOPASSWD:ALL
+            lock_passwd: false
+            # CHANGE ME
+            # passwd: $6$.JY7BZL1jj$In5ubFiX4qLmV2IOqVo35xpfUuHuFfwT/ktcp7JFcPJSVUeAhlXarUKNW0k8meqfzovWX3AuxTAscr7pWoS2e0
+            # ssh_authorized_keys:
+            #   - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCYt26XkpFw0YwwYR1LCD0IQRxa5iBLAsGYdkRMHCEbJ5ApWHhm0duMNKVokgYABWh7hi/CTYwkbrXFGVeJc9tdXX39JfghmBeVO6UDJjTQ99XDzVoVF5hbjpb4OnanzNJGNDr8lWsS/1rk8+BBHEn0Thbf/PYd8On5Pp966ZUFFfs8TOa2wvyp0om1VBYjLmZMnG6s8KqPQJFcy2hkWAQZvuxxxKw0CfOe4+IB7uDAwpK0fkyJdjwr7nRZt5zBCYbcmmv3kwGo3e5TKZHz9qgQt5rbwoUij6s8LTiZzNEY0OKLmOTHQeAf3aydDIV4HFuaGehNFM4OwRaQyaY2GIQN

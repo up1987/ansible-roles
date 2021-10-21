@@ -1,0 +1,42 @@
+---
+
+- name: k3s_master | Ensure manifests directory
+  file:
+    path: /var/lib/rancher/k3s/server/manifests/
+    state: directory
+
+- name: k3s_master | Prepare calico manifest
+  template:
+    src: calico-typha.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/calico-typha.yaml
+  when: k3s_cni == 'calico'
+
+- name: k3s_master | Prepare nginx-ingress manifest
+  template:
+    src: nginx-ingress.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/nginx-ingress.yaml
+  when: k3s_ingress == 'nginx-ingress'
+
+- name: k3s_master | Prepare traefik-ingress manifest
+  template:
+    src: traefik-ingress.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/traefik-ingress.yaml
+  when: k3s_ingress == 'traefik-ingress'
+
+- name: k3s_master | Initialize first master
+  shell: k3s-install.sh
+  environment:
+    INSTALL_K3S_SKIP_DOWNLOAD: "true"
+    INSTALL_K3S_EXEC: >-
+      server
+      --cluster-init
+      {{ '' if k3s_metrics_server_enabled else '--disable metrics-server' }}
+      {{ '' if k3s_servicelb_enabled else '--disable servicelb' }}
+      {{ '' if k3s_local_storage_enabled else '--disable local-storage' }}
+      {{ '' if k3s_traefik_enabled else '--disable traefik' }}
+      {{ '' if k3s_flannel_enabled else '--flannel-backend none --disable-network-policy' }}
+      --cluster-cidr {{ k3s_cluster_cidr }}
+      --service-cidr {{ k3s_service_cidr }}
+      --cluster-dns {{ k3s_cluster_dns }}
+      --node-taint CriticalAddonsOnly=true:NoExecute
+      {{ k3s_extra_configs }}

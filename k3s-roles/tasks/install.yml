@@ -1,0 +1,136 @@
+---
+
+- name: download | Ensure images folder
+  file:
+    path: /var/lib/rancher/k3s/agent/images/
+    state: directory
+
+- name: download | Download k3s airgap images
+  include_tasks: download_file.yml
+  vars:
+    download:
+      url: "{{ k3s_airgap_images }}"
+      dest: /var/lib/rancher/k3s/agent/images/k3s-airgap-images-amd64.tar
+      owner: root
+      mode: "0644"
+      sha256: "{{ k3s_airgap_images_checksum }}"
+  when: k3s_download_airgap_images | default(False)
+
+- name: download | Download k3s binary
+  include_tasks: download_file.yml
+  vars:
+    download:
+      url: "{{ k3s_bin }}"
+      dest: /usr/local/bin/k3s
+      owner: root
+      mode: "0755"
+      sha256: "{{ k3s_bin_checksum }}"
+
+- name: download | Download k3s install script
+  include_tasks: download_file.yml
+  vars:
+    download:
+      url: "{{ k3s_install_sh }}"
+      dest: /usr/local/bin/k3s-install.sh
+      owner: root
+      mode: "0755"
+
+- name: download | Download k3s offline images
+  include_tasks: download_file.yml
+  vars:
+    download:
+      url: "{{ item.url }}"
+      dest: "/var/lib/rancher/k3s/agent/images/{{ item.url | basename }}"
+      owner: root
+      mode: "0644"
+      sha256: "{{ item.sha256 | default('') }}"
+  with_items: "{{ k3s_offline_images | default([]) }}"
+
+- name: k3s-cluster | Ensure k3s config folder
+  file:
+    path: /etc/rancher/k3s
+    state: directory
+
+- name: k3s-cluster | Remove swapfile from /etc/fstab
+  mount:
+    name: "{{ item }}"
+    fstype: swap
+    state: absent
+  with_items:
+    - swap
+    - none
+
+- name: k3s-cluster | Check swap
+  command: /sbin/swapon -s
+  register: swapon
+  changed_when: no
+
+- name: k3s-cluster| Disable swap
+  command: /sbin/swapoff -a
+  when: swapon.stdout
+
+- name: k3s-cluster | Configure registry mirror
+  copy:
+    dest: /etc/rancher/k3s/registries.yaml
+    content: |
+      {{ k3s_registries | to_yaml }}
+  when: k3s_registries | default(False)
+
+- include_tasks: init-first-master.yml
+  when: inventory_hostname == groups['k3s_master'] | first | default(False)
+
+- name: k3s-cluster | Wait for the first master
+  wait_for:
+    host: "{{ first_k3s_master_ip }}"
+    port: "6443"
+    timeout: 180
+  run_once: true
+
+- name: k3s-cluster | Read the token
+  slurp:
+    src: /var/lib/rancher/k3s/server/token
+  register: token
+  run_once: true
+  delegate_to: "{{ groups['k3s_master']|first }}"
+  when: groups['k3s_master']|first|default(False)
+
+- name: k3s-cluster | Join other master
+  shell: k3s-install.sh
+  environment:
+    INSTALL_K3S_SKIP_DOWNLOAD: "true"
+    K3S_TOKEN: "{{ token['content'] | b64decode }}"
+    INSTALL_K3S_EXEC: >-
+      server
+      --server https://{{ first_k3s_master_ip }}:6443
+      {{ '' if k3s_metrics_server_enabled else '--disable metrics-server' }}
+      {{ '' if k3s_servicelb_enabled else '--disable servicelb' }}
+      {{ '' if k3s_local_storage_enabled else '--disable local-storage' }}
+      {{ '' if k3s_traefik_enabled else '--disable traefik' }}
+      {{ '' if k3s_flannel_enabled else '--flannel-backend none --disable-network-policy' }}
+      --cluster-cidr {{ k3s_cluster_cidr }}
+      --service-cidr {{ k3s_service_cidr }}
+      --cluster-dns {{ k3s_cluster_dns }}
+      --node-taint CriticalAddonsOnly=true:NoExecute
+      {{ k3s_extra_configs }}
+  when:
+    - inventory_hostname != groups['k3s_master'] | first | default(False)
+    - is_k3s_master
+
+- name: k3s-cluster | Setup kubectl completion
+  shell: >
+    kubectl completion bash > /etc/bash_completion.d/kubectl
+  args:
+    creates: /etc/bash_completion.d/kubectl
+  when: is_k3s_master
+
+- name: k3s-cluster | Join other nodes
+  shell: k3s-install.sh
+  environment:
+    INSTALL_K3S_SKIP_DOWNLOAD: "true"
+    K3S_TOKEN: "{{ token['content'] | default() | b64decode }}"
+    INSTALL_K3S_EXEC: >-
+      agent
+      --server https://{{ first_k3s_master_ip }}:6443
+      {{ k3s_extra_configs }}
+  when:
+    - not is_k3s_master

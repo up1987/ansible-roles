@@ -1,0 +1,12 @@
+---
+
+libvirt_host_libvirt_services_client:
+  - libvirtd
+  - numad
+
+libvirt_host_libvirt_packages_client:
+  - libvirt-clients
+  - qemu-utils
+  - virtinst
+  - cloud-image-utils
+  - numad

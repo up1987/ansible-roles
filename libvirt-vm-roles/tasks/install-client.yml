@@ -1,0 +1,15 @@
+---
+
+- name: Ensure libvirt client packages are installed
+  package:
+    name: "{{ libvirt_host_libvirt_packages_client }}"
+    state: present
+  register: result
+  until: result is success
+  retries: 3
+
+- name: Ensure libvirt related services are running
+  service:
+    name: "{{ item }}"
+    state: started
+  with_items: "{{ libvirt_host_libvirt_services_client }}"

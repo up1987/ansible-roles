@@ -1,0 +1,53 @@
+---
+
+- name: Check files
+  stat:
+    path: "{{ item.file_path }}/{{ item.name }}"
+    get_checksum: no
+  register: files_stat
+
+- name: Check backing files
+  stat:
+    path: "{{ item.backing_image }}"
+    get_checksum: no
+  register: backing_image_files_stat
+  when: item.backing_image is defined
+
+- name: Ensure file folders
+  file:
+    path: "{{ item.file_path }}"
+    state: directory
+  when:
+    - "not files_stat.stat.exists"
+
+- name: Download remote images
+  get_url:
+    url: "{{ item.image }}"
+    dest: "{% if item.backing_image is defined %}{{ item.backing_image }}{% else %}{{ item.file_path }}/{{ item.name }}{% endif %}"
+    checksum: "{{ item.checksum | default(omit) }}"
+  when:
+    - item.image is defined
+    - "'http' in item.image"
+    - "not files_stat.stat.exists"
+    - "not backing_image_files_stat.stat.exists|default(False)"
+
+- name: Create the backing image
+  command: qemu-img create -f qcow2 -F {{ item.format | default(libvirt_volume_default_format) }} -b {{ item.backing_image }} {{ item.file_path }}/{{ item.name }}
+  when:
+    - item.backing_image is defined
+    - "not files_stat.stat.exists"
+
+- name: Resize the image
+  command: qemu-img resize {{ item.file_path }}/{{ item.name }} {{ item.capacity }}
+  when:
+    - item.capacity is defined
+    - item.image is defined or item.backing_image is defined
+    - "not files_stat.stat.exists"
+
+- name: Create empty image
+  command: qemu-img create -f {{ item.format | default(libvirt_volume_default_format) }}  {{ item.file_path }}/{{ item.name }} {{ item.capacity }}
+  when:
+    - item.capacity is defined
+    - item.image is not defined
+    - item.backing_image is not defined
+    - "not files_stat.stat.exists"
