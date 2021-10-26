@@ -114,3 +114,17 @@ libvirt_vms:
     #  network_config:  # See https://cloudinit.readthedocs.io/en/latest/topics/network-config-format-v2.html
     #  user_data:  # See https://cloudinit.readthedocs.io/en/latest/topics/examples.html
     #  hostname: localhost  # Set hostname of VM
+
+    # Specifies the graphical display configuration
+    # This does not configure any virtua hardware, just how the guest's graphical display can be accessed.
+    libvirt_graphics: spice
+
+    # Specify what video device model will be attached to the guest. Valid values for VIDEO
+    # are hypervisor specific, but some options for recent kvm are cirrus, vga, qxl, virtio,
+    # or vmvga (vmware).
+    libvirt_video: qxl
+
+    # Specifies a communication channel device to connect the guest and host machine.
+    # channels:
+    #   - unix,target_type=virtio,name=org.qemu.guest_agent.0
+    #   - spicevmc

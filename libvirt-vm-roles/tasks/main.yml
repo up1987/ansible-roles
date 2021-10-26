@@ -76,10 +76,18 @@
     --network network={{ interface.source.dev }},model=virtio
     {% endif %}
     {% endfor %}
-    --graphics vnc
+    --graphics {{ vm.libvirt_graphics | default('spice') }}
+    --video {{ vm.libvirt_video | default('qxl') }}
     --noautoconsole
     --os-type=generic
+    {% if vm.channels is defined %}
+    {% for channel in vm.channels %}
+    --channel {{ channel }}
+    {% endfor %}
+    {% else %}
     --channel unix,target_type=virtio,name=org.qemu.guest_agent.0
+    --channel spicevmc
+    {% endif %}
     {% if vm.os_variant is defined %}--os-variant={{ vm.os_variant }}{% endif %}
     {% if vm.autostart | default(libvirt_vm_autostart) %}--autostart{% endif %}
   with_items: "{{ libvirt_vms }}"
