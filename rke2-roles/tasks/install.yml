@@ -1,0 +1,135 @@
+- name: Get rke2 stable version
+  uri:
+    url: "{{ rke2_channel }}"
+    method: GET
+    return_content: yes
+    status_code: 200
+    body_format: json
+  register: rke2_versions
+  delegate_to: localhost
+  when: rke2_version is not defined
+
+- set_fact:
+    rke2_version: "{{ rke2_versions.json.data | selectattr('id' , '==', 'stable') | map(attribute='latest') | list | first }}"
+  when: rke2_version is not defined
+
+- name: download | Check rke2 binary
+  stat:
+    path: /usr/local/bin/rke2
+    get_checksum: no
+  register: rke2_bin_stat
+
+- name: download | Download rke2 binary
+  include_tasks: download_file.yml
+  vars:
+    download:
+      url: "{{ rke2_bin }}"
+      dest: "/tmp/{{ rke2_bin | basename }}"
+      sha256: "{{ rke2_bin_checksum }}"
+      unarchive_to: /usr/local
+  when: not rke2_bin_stat.stat.exists
+
+- name: download | Check rke2 airgap image
+  stat:
+    path: "{{ rke2_agent_images_dir }}/{{ rke2_airgap | basename | regex_replace('\\.gz$', '') }}"
+    get_checksum: no
+  register: rke2_airgap_image_stat
+  when: rke_download_airgap_images
+
+- name: download | Download rke2 airgap image
+  include_tasks: download_file.yml
+  vars:
+    download:
+      url: "{{ rke2_airgap }}"
+      dest: "{{ rke2_agent_images_dir }}/{{ rke2_airgap | basename }}"
+      sha256: "{{ rke2_bin_checksum }}"
+  when:
+    - not rke2_airgap_image_stat.stat.exists
+    - rke_download_airgap_images
+
+- name: download | Decompress airgap image
+  shell: |
+    gzip -d "{{ rke2_agent_images_dir }}/{{ rke2_airgap | basename }}"
+  args:
+    creates: "{{ rke2_agent_images_dir }}/{{ rke2_airgap | basename | regex_replace('\\.gz$', '') }}"
+  when:
+    - rke2_airgap | basename | regex_search('\\.gz$') == '.gz'
+    - rke_download_airgap_images
+
+- name: install | Ensure config folder
+  file:
+    path: /etc/rancher/rke2
+    state: directory
+
+- name: install | Configure registry mirror
+  copy:
+    dest: /etc/rancher/rke2/registries.yaml
+    content: |
+      {{ rke2_registries | from_yaml | to_nice_yaml }}
+  when: rke2_registries | default(False)
+
+- name: install | Configure rke2
+  copy:
+    dest: /etc/rancher/rke2/config.yaml
+    content: |
+      {{ (rke2_config + rke2_extra_config) | from_yaml | to_nice_yaml }}
+
+# - name: install | Reload systemd
+#   systemd:
+#     daemon_reload: yes
+
+- name: install | Start first server
+  systemd:
+    name: rke2-server
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  when: inventory_hostname == groups['rke2_server'] | first | default(False)
+
+- name: install | Wait for the first server
+  wait_for:
+    host: "{{ first_rke2_server_ip }}"
+    port: "6443"
+    timeout: 180
+  run_once: true
+  delegate_to: localhost
+
+- name: install | Read the token
+  slurp:
+    src: /var/lib/rancher/rke2/server/node-token
+  register: node_token
+  run_once: true
+  delegate_to: "{{ groups['rke2_server']|first }}"
+  when: groups['rke2_server']|first|default(False)
+
+- name: install | Setup token
+  lineinfile:
+    path: /usr/local/lib/systemd/system/rke2-{{ 'server' if is_rke2_server else 'agent' }}.env
+    line: "{{ item }}"
+    regexp: "{{ item | regex_search('.*=') }}"
+  no_log: true
+  with_items:
+    - RKE2_TOKEN="{{ node_token.content | b64decode | regex_replace('\n', '') }}"
+    - RKE2_URL="https://{{ first_rke2_server_ip }}:9345"
+  when: inventory_hostname != groups['rke2_server'] | first | default(False)
+
+- name: install | Start all other nodes
+  systemd:
+    name: "{{ 'rke2-server' if is_rke2_server else 'rke2-agent' }}"
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  when: inventory_hostname != groups['rke2_server'] | first | default(False)
+
+- name: install | Setup kubectl
+  shell: ln -s /var/lib/rancher/rke2/bin/kubectl /usr/local/bin/kubectl
+  args:
+    creates: /usr/local/bin/kubectl
+    warn: false
+  when: is_rke2_server
+
+- name: install | Setup kubectl completion
+  shell: kubectl completion bash > /etc/bash_completion.d/kubectl
+  args:
+    creates: /etc/bash_completion.d/kubectl
+  when: is_rke2_server

@@ -1,0 +1,61 @@
+---
+
+rke_download_via_cn_mirror: true
+rke_download_airgap_images: true
+
+rke2_cluster_cidr: 10.233.64.0/18
+rke2_service_cidr: 10.233.0.0/18
+rke2_cluster_dns: 10.233.0.3
+
+rke2_version: v1.22.5+rke2r1
+rke2_channel: https://update.rke2.io/v1-release/channels
+rke2_resource_prefix: >-
+  {%- if rke_download_via_cn_mirror | default(False) -%}
+  https://rancher-mirror.oss-cn-beijing.aliyuncs.com/rke2/releases/download/{{ rke2_version | replace('+', '-') }}
+  {%- else -%}
+  https://github.com/rancher/rke2/releases/download/{{ rke2_version }}
+  {%- endif -%}
+rke2_bin: "{{ rke2_resource_prefix }}/rke2.linux-amd64.tar.gz"
+rke2_bin_checksum: "{{ rke2_resource_prefix }}/sha256sum-amd64.txt"
+rke2_airgap: "{{ rke2_resource_prefix }}/rke2-images.linux-amd64.tar.gz"
+rke2_airgap_checksum: "{{ rke2_resource_prefix }}/rke2-images.linux-amd64.tar.gz.sha256sum"
+rke2_agent_images_dir: "/var/lib/rancher/rke2/agent/images"
+
+# Mirrors is a directive that defines the names and endpoints of the private registries
+# See https://docs.rke2.io/install/containerd_registry_configuration/
+# rke2_registries:
+#   mirrors:
+#     docker.io:
+#       endpoint:
+#         - "https://registry.example.com:5000"
+#     registry.example.com:
+#       endpoint:
+#         - "https://registry.example.com:5000"
+#   configs:
+#     "registry.example.com:5000":
+#       auth:
+#         username: xxxxxx # this is the registry username
+#         password: xxxxxx # this is the registry password
+#       tls:
+#         cert_file:            # path to the cert file used to authenticate to the registry
+#         key_file:             # path to the key file for the certificate used to authenticate to the registry
+#         ca_file:              # path to the ca file used to verify the registry's certificate
+#         insecure_skip_verify: # may be set to true to skip verifying the registry's certificate
+
+is_rke2_server: "{{ inventory_hostname in groups['rke2_server'] }}"
+first_rke2_server_ip: "{{ hostvars[groups['rke2_server'][0]].ansible_default_ipv4.address | default('127.0.0.1') }}"
+
+rke2_config: |
+  {% if is_rke2_server %}
+  write-kubeconfig: /root/.kube/config
+  cluster-cidr: "{{ rke2_cluster_cidr }}"
+  service-cidr: "{{ rke2_service_cidr }}"
+  cluster-dns: "{{ rke2_cluster_dns }}"
+  {% if groups['rke2_agent'] | length > 0 %}
+  node-taint:
+    - "CriticalAddonsOnly=true:NoExecute"
+  {% endif %}
+  {% endif %}
+  node-label: []
+
+rke2_extra_config: |

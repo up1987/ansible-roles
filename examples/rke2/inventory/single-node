@@ -1,0 +1,12 @@
+[all]
+
+localhost ansible_connection=local
+
+[rke2_server]
+localhost
+
+[rke2_agent]
+
+[rke2_cluster:children]
+rke2_server
+rke2_agent

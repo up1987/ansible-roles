@@ -1,0 +1,27 @@
+
+- name: Gather facts
+  setup:
+    gather_subset: '!all,network'
+  delegate_to: "{{ delegate_host_to_gather_facts }}"
+  delegate_facts: true
+  when: hostvars[delegate_host_to_gather_facts].ansible_default_ipv4 is not defined
+  loop: "{{ groups['all']|default([]) }}"
+  loop_control:
+    loop_var: delegate_host_to_gather_facts
+  run_once: true
+  connection: "{{ (delegate_host_to_gather_facts == 'localhost') | ternary('local', omit) }}"
+
+- name: Check host architecture
+  assert:
+    that:
+      - ansible_architecture == 'x86_64'
+    msg: "Host architecture must be x86_64"
+
+- name: reset | Reset rke2
+  shell: |
+     rke2-uninstall.sh
+  ignore_errors: true
+  when: rke2_reset | default(false)
+
+- include_tasks: install.yml
+  when: not rke2_reset | default(false)

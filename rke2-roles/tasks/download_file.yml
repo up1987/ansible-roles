@@ -1,0 +1,30 @@
+---
+
+- name: download | Ensure dest directory
+  file:
+    path: "{{ download.dest | dirname }}"
+    owner: "{{ download.owner | default(omit) }}"
+    state: directory
+    recurse: yes
+
+- name: download | Download item
+  get_url:
+    url: "{{ download.url }}"
+    dest: "{{ download.dest }}"
+    owner: "{{ download.owner | default(omit) }}"
+    mode: "{{ download.mode | default(omit) }}"
+    checksum: "{{ omit if download.sha256|default('')|length == 0 else 'sha256:' + download.sha256 }}"
+    url_username: "{{ download.username | default(omit) }}"
+    url_password: "{{ download.password | default(omit) }}"
+    force_basic_auth: "{{ download.force_basic_auth | default(omit) }}"
+  register: get_url_result
+  until: "'OK' in get_url_result.msg or 'file already exists' in get_url_result.msg"
+  retries: "{{ download.retries | default(5) }}"
+  delay: "{{ download.retry_delay | default(5) }}"
+
+- name: download | Unarchive item
+  unarchive:
+    src: "{{ download.dest }}"
+    dest: "{{ download.unarchive_to }}"
+    remote_src: yes
+  when: download.unarchive_to | default(false)
